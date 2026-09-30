@@ -1,0 +1,9 @@
+{
+  "name": "divine-tiers",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DivineSMP tiers website (proxies the DuelsCore plugin API)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}
