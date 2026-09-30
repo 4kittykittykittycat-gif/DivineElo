@@ -1,0 +1,621 @@
+<title>Divine Tiers</title>
+<meta name="description" content="Ranked tiers and ELO leaderboards for DivineSMP Duels">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=Silkscreen&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: arena scoreboard — sticky top bar, main column (board / profile) + a tier-ladder rail on wide screens. */
+:root {
+  --bg: #0d0b09;
+  --bg-2: #14110d;
+  --panel: #1a1611;
+  --panel-2: #221d16;
+  --line: #2f281e;
+  --fg: #f4eddf;
+  --muted: #a19682;
+  --faint: #6f6555;
+  --gold: #ffc933;
+  --orange: #ff7a1a;
+  --good: #7cff6b;
+  --bad: #ff5b5b;
+  --silver: #d9dde3;
+  --bronze: #e08a4f;
+  --f-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Manrope", "Segoe UI", system-ui, sans-serif;
+  --f-pixel: "Silkscreen", "Courier New", monospace;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --r: 10px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--fg); }
+body {
+  margin: 0; font: 500 15px/1.5 var(--f-body);
+  background:
+    radial-gradient(1200px 520px at 50% -180px, color-mix(in srgb, var(--gold) 16%, transparent), transparent 70%),
+    radial-gradient(700px 400px at 100% 0, color-mix(in srgb, var(--orange) 9%, transparent), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+body::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 48px 48px; opacity: .22;
+  mask-image: radial-gradient(ellipse at 50% 0, #000 20%, transparent 70%);
+}
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 6px; }
+img.px, .px { image-rendering: pixelated; }
+
+/* ---------- top bar ---------- */
+.bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+.bar-in { max-width: 1240px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 16px; }
+.logo { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.logo-mark {
+  width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px;
+  background: linear-gradient(135deg, var(--gold), var(--orange)); color: var(--bg);
+  font: 700 18px var(--f-display); box-shadow: 0 0 24px color-mix(in srgb, var(--orange) 45%, transparent);
+}
+.logo-text { font: 700 19px/1 var(--f-display); letter-spacing: .06em; }
+.logo-text span { color: var(--gold); }
+.logo-sub { font: 400 10px/1 var(--f-pixel); color: var(--muted); letter-spacing: .08em; margin-top: 3px; }
+
+.search { position: relative; flex: 1; max-width: 460px; margin-left: auto; min-width: 0; }
+.search input {
+  width: 100%; height: 42px; padding: 0 14px 0 40px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  font: 600 14px var(--f-body); transition: border-color .15s, box-shadow .15s;
+}
+.search input::placeholder { color: var(--faint); }
+.search input:focus { outline: none; border-color: color-mix(in srgb, var(--gold) 60%, var(--line)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold) 12%, transparent); }
+.search svg { position: absolute; left: 13px; top: 12px; width: 18px; height: 18px; color: var(--muted); }
+.kbd { position: absolute; right: 10px; top: 10px; font: 500 11px var(--f-mono); color: var(--faint); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+.sugg {
+  position: absolute; left: 0; right: 0; top: 48px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 6px; box-shadow: 0 24px 60px -20px #000; z-index: 30;
+}
+.sugg button {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 0; border-radius: 8px;
+  background: transparent; cursor: pointer; text-align: left;
+}
+.sugg button[aria-selected="true"], .sugg button:hover { background: var(--panel-2); }
+.sugg .nm { font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sugg .el { font: 700 12px var(--f-mono); color: var(--muted); }
+.sugg .empty { padding: 10px; color: var(--muted); font-size: 13px; }
+.ip {
+  flex-shrink: 0; display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel); cursor: pointer; font: 700 13px var(--f-mono); color: var(--gold);
+}
+.ip small { font: 400 10px var(--f-pixel); color: var(--muted); }
+.ip:hover { border-color: color-mix(in srgb, var(--gold) 45%, var(--line)); }
+
+/* ---------- page ---------- */
+.wrap { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 64px; }
+.demo {
+  display: flex; gap: 10px; align-items: center; margin-bottom: 20px; padding: 10px 14px; border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--gold) 45%, var(--line)); color: var(--muted); font-size: 13px;
+}
+.demo b { color: var(--gold); font: 400 11px var(--f-pixel); letter-spacing: .06em; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; align-items: start; }
+@media (max-width: 980px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.eyebrow { font: 400 11px var(--f-pixel); letter-spacing: .12em; color: var(--gold); text-transform: uppercase; }
+h1 { font: 700 clamp(30px, 5vw, 48px)/1.02 var(--f-display); margin: 6px 0 4px; letter-spacing: -.01em; text-wrap: balance; }
+h1 em { font-style: normal; background: linear-gradient(90deg, var(--gold), var(--orange)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lede { color: var(--muted); margin: 0 0 18px; max-width: 60ch; }
+.live { display: inline-flex; align-items: center; gap: 6px; font: 400 10px var(--f-pixel); color: var(--good); letter-spacing: .08em; }
+.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 10px var(--good); animation: pulse 1.6s infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+
+/* mode chips */
+.modes { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin: 0 0 22px; scrollbar-width: thin; }
+.mode {
+  flex-shrink: 0; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 13px 0 10px;
+  border-radius: 9px; border: 1px solid var(--line); background: var(--panel); cursor: pointer;
+  font: 600 13px var(--f-display); letter-spacing: .02em; color: var(--muted); transition: all .15s;
+}
+.mode img { width: 20px; height: 20px; }
+.mode:hover { color: var(--fg); border-color: color-mix(in srgb, var(--gold) 35%, var(--line)); }
+.mode[aria-pressed="true"] { color: var(--bg); background: linear-gradient(135deg, var(--gold), var(--orange)); border-color: transparent; }
+.mode .ov { width: 20px; height: 20px; display: grid; place-items: center; font: 700 13px var(--f-display); }
+
+/* podium */
+.podium { display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 14px; align-items: end; margin-bottom: 18px; }
+.pod {
+  position: relative; border-radius: 14px; padding: 16px 14px 18px; text-align: center; overflow: hidden;
+  border: 1px solid var(--line); background: linear-gradient(180deg, var(--panel-2), var(--panel)); cursor: pointer;
+  transition: transform .2s, border-color .2s; animation: rise .7s cubic-bezier(.2,.8,.2,1) both;
+}
+.pod:hover { transform: translateY(-4px); }
+.pod::before { content: ""; position: absolute; inset: 0; background: radial-gradient(260px 180px at 50% 0, color-mix(in srgb, var(--c) 28%, transparent), transparent 70%); pointer-events: none; }
+.pod.p1 { --c: var(--gold); border-color: color-mix(in srgb, var(--gold) 55%, var(--line)); animation-delay: .12s; padding-top: 22px; }
+.pod.p2 { --c: var(--silver); animation-delay: .24s; }
+.pod.p3 { --c: var(--bronze); animation-delay: .36s; }
+@keyframes rise { from { transform: translateY(18px); opacity: .3; } }
+.pod .place { position: absolute; top: 10px; left: 12px; font: 700 26px/1 var(--f-display); color: var(--c); }
+.pod .crown { position: absolute; top: 10px; right: 12px; width: 26px; height: 26px; }
+.pod .body { position: relative; height: 150px; display: grid; place-items: end center; }
+.pod.p1 .body { height: 190px; }
+.pod .body img { max-height: 100%; width: auto; filter: drop-shadow(0 14px 18px rgba(0,0,0,.6)); }
+.pod .body img.fallback { width: 96px; height: 96px; border-radius: 12px; }
+.pod .nm { position: relative; font: 700 18px var(--f-display); margin-top: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pod .elo { position: relative; font: 700 30px/1.1 var(--f-mono); color: var(--c); letter-spacing: -.02em; }
+.pod .elo small { font: 500 11px var(--f-pixel); color: var(--muted); letter-spacing: .08em; margin-left: 4px; }
+.pod .meta { position: relative; display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.pod .step { position: relative; height: 6px; border-radius: 3px; margin-top: 14px; background: linear-gradient(90deg, transparent, var(--c), transparent); opacity: .7; }
+@media (max-width: 620px) {
+  .podium { grid-template-columns: 1fr 1fr; }
+  .pod.p1 { grid-column: 1 / -1; order: -1; }
+  .pod .body, .pod.p1 .body { height: 130px; }
+}
+
+/* table rows */
+.board { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.row {
+  display: grid; grid-template-columns: 44px 40px minmax(0, 1fr) auto 90px; gap: 12px; align-items: center;
+  padding: 10px 16px; border-top: 1px solid var(--line); cursor: pointer; transition: background .15s;
+}
+.row:first-child { border-top: 0; }
+.row:hover { background: var(--panel-2); }
+.row .rk { font: 700 18px var(--f-display); color: var(--muted); text-align: center; }
+.row .av { width: 40px; height: 40px; border-radius: 8px; background: var(--panel-2); }
+.row .who { min-width: 0; }
+.row .who b { display: block; font: 700 16px var(--f-display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.minis { display: flex; gap: 4px; margin-top: 3px; flex-wrap: wrap; }
+.mini { position: relative; width: 20px; height: 20px; border-radius: 4px; background: var(--panel-2); display: grid; place-items: center; }
+.mini img { width: 14px; height: 14px; }
+.mini::after { content: ""; position: absolute; right: -2px; bottom: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--c); border: 2px solid var(--panel); }
+.row .elo { font: 700 20px var(--f-mono); text-align: right; font-variant-numeric: tabular-nums; }
+.row .elo small { display: block; font: 400 10px var(--f-pixel); color: var(--faint); letter-spacing: .08em; }
+.row .wl { font: 500 12px var(--f-mono); color: var(--muted); text-align: right; white-space: nowrap; }
+@media (max-width: 620px) {
+  .row { grid-template-columns: 30px 36px minmax(0, 1fr) 72px; padding: 10px 12px; gap: 10px; }
+  .row .av { width: 36px; height: 36px; }
+  .row .wl { display: none; }
+}
+.empty-board { padding: 40px 20px; text-align: center; color: var(--muted); }
+.empty-board b { display: block; font: 700 18px var(--f-display); color: var(--fg); margin-bottom: 4px; }
+
+/* tier badge */
+.tier {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 7px; border-radius: 5px;
+  font: 400 11px/1 var(--f-pixel); letter-spacing: .04em; color: var(--c);
+  background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  white-space: nowrap;
+}
+.tier.lg { height: 34px; padding: 0 12px; font-size: 16px; border-radius: 8px; box-shadow: 0 0 28px color-mix(in srgb, var(--c) 30%, transparent); }
+.tier.un { --c: var(--faint); }
+.kitlbl { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.kitlbl img { width: 16px; height: 16px; }
+
+/* rail */
+.rail { display: flex; flex-direction: column; gap: 18px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 86px); }
+@media (max-width: 980px) { .rail { position: static; } }
+.card { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); padding: 16px; }
+.card h3 { margin: 0 0 12px; font: 400 11px var(--f-pixel); letter-spacing: .12em; color: var(--muted); text-transform: uppercase; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stat { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.stat b { display: block; font: 700 22px var(--f-mono); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); }
+.ladder { display: flex; flex-direction: column-reverse; gap: 4px; }
+.rung { display: grid; grid-template-columns: 48px 1fr auto; align-items: center; gap: 10px; }
+.rung .bar-t { height: 8px; border-radius: 4px; background: linear-gradient(90deg, color-mix(in srgb, var(--c) 30%, transparent), var(--c)); }
+.rung .n { font: 700 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.note { font-size: 12px; color: var(--faint); margin: 12px 0 0; }
+
+/* ---------- profile ---------- */
+.back { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font: 600 13px var(--f-body); margin-bottom: 16px; cursor: pointer; background: none; border: 0; padding: 0; }
+.back:hover { color: var(--fg); }
+.hero {
+  position: relative; display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 24px; align-items: end;
+  border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; overflow: hidden;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+}
+.hero::before { content: ""; position: absolute; inset: 0; background: radial-gradient(500px 260px at 0 0, color-mix(in srgb, var(--c, var(--gold)) 22%, transparent), transparent 70%); pointer-events: none; }
+.hero .skin { position: relative; height: 230px; display: grid; place-items: end center; }
+.hero .skin img { max-height: 100%; filter: drop-shadow(0 16px 22px rgba(0,0,0,.6)); }
+.hero .skin img.fallback { width: 130px; height: 130px; border-radius: 14px; }
+.hero .info { position: relative; min-width: 0; }
+.hero h2 { margin: 4px 0 10px; font: 700 clamp(28px, 5vw, 44px)/1 var(--f-display); overflow-wrap: anywhere; }
+.hero .chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-2); font-size: 13px; color: var(--muted); }
+.chip b { color: var(--fg); font-family: var(--f-mono); }
+.hero .big { display: flex; gap: 28px; flex-wrap: wrap; margin-top: 18px; }
+.hero .big div span { display: block; font: 400 10px var(--f-pixel); letter-spacing: .1em; color: var(--muted); }
+.hero .big div b { font: 700 32px/1.1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.hero .big .g { background: linear-gradient(90deg, var(--gold), var(--orange)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+@media (max-width: 620px) {
+  .hero { grid-template-columns: minmax(0, 1fr); padding: 18px; }
+  .hero .skin { height: 170px; }
+}
+.sec-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 30px 0 12px; }
+.sec-h h3 { margin: 0; font: 700 20px var(--f-display); }
+.sec-h span { color: var(--muted); font-size: 13px; }
+.kits { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.kit {
+  position: relative; border: 1px solid var(--line); border-radius: 14px; padding: 14px; overflow: hidden;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 7%, var(--panel)), var(--panel));
+}
+.kit.none { --c: var(--faint); opacity: .55; }
+.kit .top { display: flex; align-items: center; gap: 10px; }
+.kit .ic { width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center; background: var(--bg-2); border: 1px solid var(--line); }
+.kit .ic img { width: 24px; height: 24px; }
+.kit .kn { flex: 1; min-width: 0; }
+.kit .kn b { display: block; font: 700 16px var(--f-display); }
+.kit .kn span { font-size: 12px; color: var(--muted); }
+.kit .ke { display: flex; align-items: baseline; justify-content: space-between; margin-top: 12px; }
+.kit .ke b { font: 700 26px var(--f-mono); font-variant-numeric: tabular-nums; }
+.kit .ke span { font: 500 12px var(--f-mono); color: var(--muted); }
+.prog { height: 7px; border-radius: 4px; background: var(--bg-2); margin-top: 8px; overflow: hidden; }
+.prog i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--c), var(--c2, var(--c))); box-shadow: 0 0 12px color-mix(in srgb, var(--c) 60%, transparent); }
+.kit .kf { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 12px; }
+.kit .kf div { background: var(--bg-2); border-radius: 7px; padding: 6px 8px; }
+.kit .kf span { display: block; font: 400 9px var(--f-pixel); color: var(--faint); letter-spacing: .06em; }
+.kit .kf b { font: 700 13px var(--f-mono); font-variant-numeric: tabular-nums; }
+.nf { text-align: center; padding: 60px 20px; border: 1px dashed var(--line); border-radius: 16px; }
+.nf b { display: block; font: 700 24px var(--f-display); margin-bottom: 6px; }
+.nf p { color: var(--muted); margin: 0; }
+.toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--line); padding: 10px 16px; border-radius: 10px; font-weight: 600; z-index: 50; }
+footer { text-align: center; color: var(--faint); font-size: 12px; padding: 30px 16px 40px; position: relative; z-index: 1; }
+@media (max-width: 720px) { .ip small, .logo-sub, .kbd { display: none; } .ip { padding: 0 10px; } }
+@media (max-width: 520px) { .ip { display: none; } .logo-text { display: none; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+
+<header class="bar">
+  <div class="bar-in">
+    <a class="logo" href="#top" id="home-link" aria-label="Divine Tiers home">
+      <div class="logo-mark">✦</div>
+      <div><div class="logo-text">DIVINE <span>TIERS</span></div><div class="logo-sub">RANKED DUELS</div></div>
+    </a>
+    <div class="search" role="combobox" aria-haspopup="listbox" aria-expanded="false" id="search-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Search a player…" autocomplete="off" spellcheck="false" aria-controls="sugg" aria-label="Search players">
+      <span class="kbd">/</span>
+      <div class="sugg" id="sugg" role="listbox" hidden></div>
+    </div>
+    <button class="ip" id="ip" title="Copy server IP"><small>IP</small><span id="ip-text">play.divinesmp.org</span></button>
+  </div>
+</header>
+
+<main class="wrap" id="app"></main>
+<footer id="foot">Tiers update live from the server.</footer>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* Where the stats API lives. Leave "" when the plugin serves this page (http://your-ip:8080/).
+   If you host this file somewhere else (your own website, Vercel, Netlify...), put the plugin's address here,
+   e.g. "http://play.divinesmp.org:8080/" (the plugin already sends CORS headers). */
+const API_BASE = "";
+const ICONS = __ICONS__;
+const KIT_ORDER = ["spearmace","mace","axe","sword","uhc","crystal","cart","diamondsmp","smp","nethpot","diamondpot"];
+const TIER_DEFAULT = [
+  {name:"LT5",color:"#8C8C8C",elo:0},{name:"HT5",color:"#D2D2D2",elo:1100},{name:"LT4",color:"#3FBF4A",elo:1200},
+  {name:"HT4",color:"#7CFF6B",elo:1300},{name:"LT3",color:"#2E8BFF",elo:1425},{name:"HT3",color:"#5FD3FF",elo:1550},
+  {name:"LT2",color:"#9B4DFF",elo:1700},{name:"HT2",color:"#D78BFF",elo:1850},{name:"LT1",color:"#FF7A00",elo:2025},
+  {name:"HT1",color:"#FFD000",elo:2200}];
+
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => Number(n).toLocaleString("en-US");
+let DEMO = false, OV = null, TIERS = TIER_DEFAULT, MODE = "overall", refreshTimer = null;
+
+/* ---------- avatars: real skins from mc-heads, pixel fallback ---------- */
+function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function pixelFace(name) {
+  const c = document.createElement("canvas"); c.width = c.height = 8;
+  const x = c.getContext("2d"); let h = hash(name);
+  const rnd = () => { h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0; h = Math.imul(h ^ (h >>> 13), 3266489909) >>> 0; return ((h ^= h >>> 16) >>> 0) / 4294967296; };
+  const hue = Math.floor(rnd() * 360), skin = `hsl(${20 + rnd()*20} ${40 + rnd()*20}% ${55 + rnd()*20}%)`;
+  const hair = `hsl(${hue} ${30 + rnd()*40}% ${18 + rnd()*25}%)`;
+  x.fillStyle = skin; x.fillRect(0, 0, 8, 8);
+  x.fillStyle = hair; x.fillRect(0, 0, 8, 2 + Math.floor(rnd()*2)); x.fillRect(0, 0, 1, 4); x.fillRect(7, 0, 1, 4);
+  x.fillStyle = "#fff"; x.fillRect(1, 4, 2, 1); x.fillRect(5, 4, 2, 1);
+  x.fillStyle = `hsl(${(hue + 180) % 360} 60% 40%)`; x.fillRect(2, 4, 1, 1); x.fillRect(5, 4, 1, 1);
+  x.fillStyle = "rgba(0,0,0,.35)"; x.fillRect(3, 6, 2, 1);
+  return c.toDataURL();
+}
+const faceCache = {};
+function face(name) { return faceCache[name] ||= pixelFace(name); }
+function avatar(p, size = 64) {
+  const fb = face(p.name);
+  if (DEMO) return `<img class="px av" src="${fb}" alt="">`;
+  return `<img class="av" src="https://mc-heads.net/avatar/${esc(p.uuid)}/${size}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${fb}';this.classList.add('px')">`;
+}
+function bodyImg(p, h = 240) {
+  const fb = face(p.name);
+  if (DEMO) return `<img class="px fallback" src="${fb}" alt="">`;
+  return `<img src="https://mc-heads.net/body/${esc(p.uuid)}/${h}" alt="${esc(p.name)}'s skin" loading="lazy" onerror="this.onerror=null;this.src='${fb}';this.className='px fallback'">`;
+}
+function icon(key) { return ICONS[key] || ICONS._default; }
+
+/* ---------- tiers ---------- */
+function tierOf(t) { return t >= 0 && TIERS[t] ? TIERS[t] : null; }
+function tierBadge(t, lg = false) {
+  const x = tierOf(t);
+  return x ? `<span class="tier${lg ? " lg" : ""}" style="--c:${x.color}">${x.name}</span>`
+           : `<span class="tier un${lg ? " lg" : ""}">UNRANKED</span>`;
+}
+
+/* ---------- data (live API, or sample data when opened without the server) ---------- */
+async function api(path) {
+  if (DEMO) return demoApi(path);
+  const r = await fetch(API_BASE + path, { cache: "no-store" });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+async function boot() {
+  try {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 3500);
+    const r = await fetch(API_BASE + "api/overview", { cache: "no-store", signal: ctl.signal }); clearTimeout(t);
+    if (!r.ok) throw 0; OV = await r.json();
+    if (!OV || !OV.kits) throw 0;
+  } catch { DEMO = true; OV = demoApi("api/overview"); }
+  TIERS = OV.tiers && OV.tiers.length ? OV.tiers : TIER_DEFAULT;
+  $("#ip-text").textContent = OV.ip || "play.divinesmp.org";
+  route();
+}
+
+/* ---------- views ---------- */
+function modesHtml() {
+  const kits = [...OV.kits].sort((a, b) => (KIT_ORDER.indexOf(a.icon) + 99) % 99 - (KIT_ORDER.indexOf(b.icon) + 99) % 99);
+  return `<div class="modes" role="toolbar" aria-label="Gamemode">
+    <button class="mode" data-mode="overall" aria-pressed="${MODE === "overall"}"><span class="ov">✦</span>Overall</button>
+    ${kits.map(k => `<button class="mode" data-mode="${esc(k.id)}" aria-pressed="${MODE === k.id}"><img class="px" src="${icon(k.icon)}" alt="">${esc(k.name)}</button>`).join("")}
+  </div>`;
+}
+function kitName(id) { const k = OV.kits.find(k => k.id === id); return k ? k.name : id; }
+function kitIcon(id) { const k = OV.kits.find(k => k.id === id); return icon(k ? k.icon : ""); }
+
+function minis(p) {
+  const t = p.tiers || {};
+  return Object.keys(t).sort((a, b) => t[b] - t[a]).slice(0, 8).map(k => {
+    const x = tierOf(t[k]); return `<span class="mini" style="--c:${x ? x.color : "var(--faint)"}" title="${esc(k)}: ${x ? x.name : ""}"><img class="px" src="${icon(k)}" alt=""></span>`;
+  }).join("");
+}
+
+function podium(list, kit) {
+  const [a, b, c] = list;
+  const card = (p, cls, place) => {
+    if (!p) return `<div class="pod ${cls}" style="cursor:default"><div class="place">${place}</div><div class="body"></div><div class="nm" style="color:var(--faint)">Open spot</div><div class="elo">—</div><div class="step"></div></div>`;
+    const tier = kit === "overall" ? p.bestTier : p.tier;
+    return `<a class="pod ${cls}" href="#p-${encodeURIComponent(p.name)}" data-player="${esc(p.name)}">
+      <div class="place">${place}</div>
+      ${place === 1 ? `<svg class="crown" viewBox="0 0 24 24" fill="var(--gold)"><path d="M3 18h18l-1.5-10-4.5 4-3-7-3 7-4.5-4z"/></svg>` : ""}
+      <div class="body">${bodyImg(p, place === 1 ? 260 : 220)}</div>
+      <div class="nm">${esc(p.name)}</div>
+      <div class="elo">${fmt(p.elo)}<small>ELO</small></div>
+      <div class="meta">${tierBadge(tier)}${kit === "overall" && p.bestIcon ? `<span class="kitlbl"><img class="px" src="${icon(p.bestIcon)}" alt="">${esc(p.bestKit)}</span>` : ""}</div>
+      <div class="step"></div></a>`;
+  };
+  return `<div class="podium">${card(b, "p2", 2)}${card(a, "p1", 1)}${card(c, "p3", 3)}</div>`;
+}
+
+function rows(list, kit) {
+  if (!list.length) return "";
+  return `<div class="board">${list.map(p => {
+    const tier = kit === "overall" ? p.bestTier : p.tier;
+    const sub = kit === "overall"
+      ? `<div class="minis">${minis(p)}</div>`
+      : `<div class="minis">${tierBadge(tier)}</div>`;
+    const wl = kit === "overall" ? `${fmt(p.wins)}W · ${fmt(p.played)} played` : `${p.kitWins}W ${p.kitLosses}L · ${p.winrate}%`;
+    return `<a class="row" href="#p-${encodeURIComponent(p.name)}">
+      <div class="rk">${p.rank}</div>${avatar(p, 40)}
+      <div class="who"><b>${esc(p.name)}</b>${sub}</div>
+      <div class="wl">${wl}</div>
+      <div class="elo">${fmt(p.elo)}<small>${kit === "overall" ? "AVG ELO" : "ELO"}</small></div></a>`;
+  }).join("")}</div>`;
+}
+
+function rail() {
+  const t = OV.totals || {};
+  return `<aside class="rail">
+    <div class="card"><h3>Server</h3><div class="stats">
+      <div class="stat"><b>${fmt(t.ranked || 0)}</b><span>Ranked players</span></div>
+      <div class="stat"><b>${fmt(t.matches || 0)}</b><span>Ranked matches</span></div>
+      <div class="stat"><b>${OV.kits.length}</b><span>Gamemodes</span></div>
+      <div class="stat"><b>${fmt(t.online || 0)}</b><span>Online now</span></div>
+    </div></div>
+    <div class="card"><h3>Tier ladder</h3><div class="ladder">
+      ${TIERS.map((x, i) => `<div class="rung" style="--c:${x.color}"><span class="tier" style="--c:${x.color}">${x.name}</span><div class="bar-t" style="width:${20 + i * 8.8}%"></div><span class="n">${fmt(x.elo)}</span></div>`).join("")}
+    </div><p class="note">Play ${OV.placementMatches || 5} ranked matches in a gamemode to get your first tier. Overall ELO is your average across every gamemode you're placed in.</p></div>
+  </aside>`;
+}
+
+async function home() {
+  const kit = MODE;
+  const data = kit === "overall" ? { players: OV.top } : await api(`api/leaderboard?kit=${encodeURIComponent(kit)}`);
+  const list = (data && data.players || []).slice(0, 10);
+  const title = kit === "overall" ? `The top 10 <em>overall</em>` : `Top 10 in <em>${esc(kitName(kit))}</em>`;
+  const lede = kit === "overall"
+    ? "Ranked by average ELO across every gamemode. Only /queue matches count."
+    : `Ranked by ${esc(kitName(kit))} ELO. Only /queue matches count.`;
+  $("#app").innerHTML = `${DEMO ? demoNote() : ""}
+    <div class="grid"><section style="min-width:0">
+      <div class="eyebrow">${esc(OV.server || "DivineSMP")} leaderboard</div>
+      <h1>${title}</h1>
+      <p class="lede">${lede} <span class="live">LIVE</span></p>
+      ${modesHtml()}
+      ${list.length ? podium(list.slice(0, 3), kit) + rows(list.slice(3), kit)
+        : `<div class="board"><div class="empty-board"><b>No one is ranked here yet</b>Finish ${OV.placementMatches || 5} placement matches to claim #1.</div></div>`}
+    </section>${rail()}</div>`;
+  document.querySelectorAll(".mode").forEach(b => b.onclick = () => {
+    MODE = b.dataset.mode; location.hash = MODE === "overall" ? "top" : "k-" + MODE;
+  });
+  const cur = document.querySelector('.mode[aria-pressed="true"]'); if (cur) cur.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+async function profile(name) {
+  $("#app").innerHTML = `<div class="nf"><b>Loading ${esc(name)}…</b></div>`;
+  const p = await api(`api/player/${encodeURIComponent(name)}`).catch(() => null);
+  if (!p) {
+    $("#app").innerHTML = `<button class="back" data-back>← Leaderboard</button><div class="nf"><b>No player called “${esc(name)}”</b><p>Check the spelling, or they haven't joined the duels server yet.</p></div>`;
+    $("[data-back]").onclick = () => location.hash = "top"; return;
+  }
+  const best = tierOf(p.bestTier);
+  const played = p.kits.filter(k => k.played > 0);
+  const losses = played.reduce((s, k) => s + (k.losses || 0), 0);
+  const wr = p.played ? Math.round(p.wins * 100 / p.played) : 0;
+  const kits = [...p.kits].sort((a, b) => (b.tier ?? -2) - (a.tier ?? -2) || (b.elo || 0) - (a.elo || 0) || (b.played - a.played));
+  $("#app").innerHTML = `${DEMO ? demoNote() : ""}
+    <button class="back" data-back>← Leaderboard</button>
+    <section class="hero" style="--c:${best ? best.color : "var(--gold)"}">
+      <div class="skin">${bodyImg(p, 300)}</div>
+      <div class="info">
+        <div class="eyebrow">${p.online ? `<span class="live">ONLINE</span>` : "Player profile"}</div>
+        <h2>${esc(p.name)}</h2>
+        <div class="chips">${tierBadge(p.bestTier, true)}
+          ${p.bestKit ? `<span class="chip"><img class="px" src="${icon(p.bestIcon)}" width="16" height="16" alt="">Best in <b>${esc(p.bestKit)}</b></span>` : ""}
+          ${p.overallPosition > 0 ? `<span class="chip">Overall rank <b>#${p.overallPosition}</b></span>` : ""}</div>
+        <div class="big">
+          <div><span>OVERALL ELO</span><b class="g">${p.overallElo >= 0 ? fmt(p.overallElo) : "—"}</b></div>
+          <div><span>WINS</span><b>${fmt(p.wins)}</b></div>
+          <div><span>LOSSES</span><b>${fmt(losses)}</b></div>
+          <div><span>WIN RATE</span><b>${wr}%</b></div>
+        </div>
+      </div>
+    </section>
+    <div class="sec-h"><h3>Every gamemode</h3><span>${played.length} of ${p.kits.length} played</span></div>
+    <div class="kits">${kits.map(kitCard).join("")}</div>`;
+  $("[data-back]").onclick = () => location.hash = MODE === "overall" ? "top" : "k-" + MODE;
+  window.scrollTo({ top: 0 });
+}
+
+function kitCard(k) {
+  if (!k.played) return `<div class="kit none"><div class="top"><div class="ic"><img class="px" src="${icon(k.icon)}" alt=""></div>
+    <div class="kn"><b>${esc(k.name)}</b><span>Not played yet</span></div>${tierBadge(-1)}</div>
+    <div class="ke"><b>—</b><span>0 matches</span></div><div class="prog"><i style="width:0"></i></div></div>`;
+  const t = tierOf(k.tier), next = tierOf((k.tier ?? -1) + 1);
+  const placing = k.tier < 0;
+  const pct = Math.round((k.progress || 0) * 100);
+  const color = t ? t.color : "var(--muted)";
+  const status = placing ? `Placements ${k.placements}/${OV.placementMatches || 5}`
+    : k.tier >= 9 ? "Max tier" : `${pct}% to ${next.name}`;
+  return `<div class="kit" style="--c:${color};--c2:${next && !placing ? next.color : color}">
+    <div class="top"><div class="ic"><img class="px" src="${icon(k.icon)}" alt=""></div>
+      <div class="kn"><b>${esc(k.name)}</b><span>${k.position > 0 ? `#${k.position} on the board` : status}</span></div>${tierBadge(k.tier)}</div>
+    <div class="ke"><b>${fmt(k.elo)}</b><span>${status}</span></div>
+    <div class="prog"><i style="width:${k.tier >= 9 ? 100 : pct}%"></i></div>
+    <div class="kf">
+      <div><span>W / L</span><b>${k.wins}-${k.losses}</b></div>
+      <div><span>WIN %</span><b>${k.winrate}</b></div>
+      <div><span>PEAK</span><b>${k.peak >= 0 ? TIERS[k.peak].name : "—"}</b></div>
+      <div><span>STREAK</span><b>${k.bestStreak || 0}</b></div>
+    </div></div>`;
+}
+
+function demoNote() {
+  return `<div class="demo"><b>PREVIEW</b>These are sample players. On your server this page shows live tiers from the duels plugin.</div>`;
+}
+
+/* ---------- routing ---------- */
+function route() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  clearInterval(refreshTimer);
+  if (h.startsWith("p-")) { profile(h.slice(2)); return; }
+  MODE = h.startsWith("k-") && OV.kits.some(k => k.id === h.slice(2)) ? h.slice(2) : "overall";
+  home();
+  if (!DEMO) refreshTimer = setInterval(async () => {
+    try { OV = await api("api/overview"); if (!location.hash.startsWith("#p-")) home(); } catch {}
+  }, 15000);
+}
+window.addEventListener("hashchange", route);
+$("#home-link").onclick = e => { e.preventDefault(); MODE = "overall"; location.hash = "top"; };
+
+/* ---------- search ---------- */
+const q = $("#q"), sg = $("#sugg"), box = $("#search-box");
+let sel = -1, items = [], seq = 0;
+function closeSugg() { sg.hidden = true; box.setAttribute("aria-expanded", "false"); sel = -1; }
+function paint() {
+  if (!items.length) { sg.innerHTML = `<div class="empty">No players match “${esc(q.value)}”. Press Enter to look them up.</div>`; }
+  else sg.innerHTML = items.map((p, i) => `<button role="option" aria-selected="${i === sel}" data-i="${i}">${avatar(p, 32).replace('class="', 'style="width:28px;height:28px;border-radius:6px" class="')}<span class="nm">${esc(p.name)}</span>${tierBadge(p.bestTier)}<span class="el">${p.overallElo >= 0 ? fmt(p.overallElo) : ""}</span></button>`).join("");
+  sg.hidden = false; box.setAttribute("aria-expanded", "true");
+  sg.querySelectorAll("button").forEach(b => b.onmousedown = e => { e.preventDefault(); go(items[+b.dataset.i].name); });
+}
+function go(name) { if (!name) return; closeSugg(); q.value = ""; q.blur(); location.hash = "p-" + encodeURIComponent(name); }
+let deb;
+q.addEventListener("input", () => {
+  clearTimeout(deb); const v = q.value.trim();
+  if (!v) { closeSugg(); return; }
+  deb = setTimeout(async () => {
+    const my = ++seq; const r = await api(`api/search?q=${encodeURIComponent(v)}`).catch(() => []);
+    if (my !== seq) return; items = r || []; sel = items.length ? 0 : -1; paint();
+  }, 110);
+});
+q.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" && items.length) { sel = (sel + 1) % items.length; paint(); e.preventDefault(); }
+  else if (e.key === "ArrowUp" && items.length) { sel = (sel - 1 + items.length) % items.length; paint(); e.preventDefault(); }
+  else if (e.key === "Enter") { go(sel >= 0 && items[sel] ? items[sel].name : q.value.trim()); }
+  else if (e.key === "Escape") { closeSugg(); q.blur(); }
+});
+q.addEventListener("blur", () => setTimeout(closeSugg, 120));
+document.addEventListener("keydown", e => { if (e.key === "/" && document.activeElement !== q) { e.preventDefault(); q.focus(); } });
+
+$("#ip").onclick = async () => {
+  const ip = $("#ip-text").textContent;
+  try { await navigator.clipboard.writeText(ip); toast("Copied " + ip); }
+  catch { const r = document.createRange(); r.selectNodeContents($("#ip-text")); getSelection().removeAllRanges(); getSelection().addRange(r); toast("Press Ctrl+C to copy"); }
+};
+function toast(m) { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(t._t); t._t = setTimeout(() => t.hidden = true, 1800); }
+
+/* ---------- sample data for previews ---------- */
+let DEMO_DB = null;
+function demoDb() {
+  if (DEMO_DB) return DEMO_DB;
+  const kits = [["spearmace","SpearMace"],["mace","Mace"],["axe","Axe"],["sword","Sword"],["uhc","UHC"],["crystal","Crystal"],["cart","Cart"],["diamondsmp","DiamondSMP"],["smp","SMP"],["nethpot","NethPot"],["diamondpot","DiamondPot"]]
+    .map(([id, name]) => ({ id, name, icon: id }));
+  const names = ["Vexbound","Kairo_PvP","SlamDunkMace","frostbyte","Nyxtrail","Tidebreaker","emberwolf","Qubit_","Hollowpoint","zephyrmain","PearlPilot","cobaltcrit","Lumen_","ashfall21","RiftWalker","sunderblade","m1ntleaf","Oathkeeper","pixelbrawl","NovaStrafe","glaciate","Crestfall","driftwood_","TotemTax","wickedwind","Bramble","halcyon09","ironclad_ttv","Sablewing","quartzfox"];
+  let s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const tierFor = e => { let t = 0; TIER_DEFAULT.forEach((x, i) => { if (e >= x.elo) t = i; }); return t; };
+  const players = names.map((n, i) => {
+    const skill = 2350 - i * 44 - rnd() * 60;
+    const ks = kits.map(k => {
+      if (rnd() < 0.28 + i * 0.012) return { id: k.id, name: k.name, icon: k.icon, played: 0 };
+      const played = 5 + Math.floor(rnd() * 90), elo = Math.max(880, Math.round(skill - 260 + rnd() * 380));
+      const wins = Math.round(played * (0.35 + (elo - 900) / 2600 + rnd() * .08));
+      const tier = tierFor(elo), nxt = TIER_DEFAULT[tier + 1];
+      return { id: k.id, name: k.name, icon: k.icon, elo, tier, peak: Math.min(9, tier + (rnd() < .3 ? 1 : 0)), played, wins, losses: played - wins,
+        winrate: Math.round(wins * 100 / played), streak: Math.floor(rnd() * 5), bestStreak: 2 + Math.floor(rnd() * 12),
+        progress: nxt ? (elo - TIER_DEFAULT[tier].elo) / (nxt.elo - TIER_DEFAULT[tier].elo) : 1, placements: 5, position: -1 };
+    });
+    const placed = ks.filter(k => k.played);
+    const overallElo = placed.length ? Math.round(placed.reduce((a, k) => a + k.elo, 0) / placed.length) : -1;
+    let bk = null; placed.forEach(k => { if (!bk || k.tier > bk.tier || (k.tier === bk.tier && k.elo > bk.elo)) bk = k; });
+    const tiers = {}; placed.forEach(k => tiers[k.icon] = k.tier);
+    return { name: n, uuid: "demo-" + i, overallElo, bestTier: bk ? bk.tier : -1, bestKit: bk && bk.name, bestIcon: bk && bk.icon,
+      wins: placed.reduce((a, k) => a + k.wins, 0), played: placed.reduce((a, k) => a + k.played, 0), tiers, kits: ks, online: rnd() < .25 };
+  });
+  const overall = players.filter(p => p.overallElo >= 0).sort((a, b) => b.overallElo - a.overallElo);
+  overall.forEach((p, i) => p.overallPosition = i + 1);
+  const boards = {};
+  kits.forEach(k => {
+    const lb = players.filter(p => p.kits.find(x => x.id === k.id).played).sort((a, b) => b.kits.find(x => x.id === k.id).elo - a.kits.find(x => x.id === k.id).elo);
+    lb.forEach((p, i) => p.kits.find(x => x.id === k.id).position = i + 1);
+    boards[k.id] = lb.map((p, i) => { const ks = p.kits.find(x => x.id === k.id);
+      return { ...p, rank: i + 1, elo: ks.elo, tier: ks.tier, kitWins: ks.wins, kitLosses: ks.losses, winrate: ks.winrate }; });
+    k.ranked = lb.length;
+  });
+  const top = overall.map((p, i) => ({ ...p, rank: i + 1, elo: p.overallElo }));
+  return DEMO_DB = { kits, players, top, boards, matches: Math.round(players.reduce((a, p) => a + p.played, 0) / 2) };
+}
+function demoApi(path) {
+  const db = demoDb(), u = new URL(path, "https://x/");
+  if (u.pathname === "/api/overview") return { server: "DivineSMP", ip: "play.divinesmp.org", placementMatches: 5, tiers: TIER_DEFAULT, kits: db.kits,
+    totals: { players: db.players.length, ranked: db.top.length, matches: db.matches, online: 7 }, top: db.top };
+  if (u.pathname === "/api/leaderboard") return { players: db.boards[u.searchParams.get("kit")] || [] };
+  if (u.pathname.startsWith("/api/player/")) { const n = decodeURIComponent(u.pathname.slice(12)).toLowerCase(); return db.players.find(p => p.name.toLowerCase() === n) || null; }
+  if (u.pathname === "/api/search") { const v = (u.searchParams.get("q") || "").toLowerCase();
+    return db.players.filter(p => p.name.toLowerCase().includes(v)).sort((a, b) => a.name.toLowerCase().startsWith(v) ? -1 : 1).slice(0, 8); }
+  return null;
+}
+
+boot();
+</script>
